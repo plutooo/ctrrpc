@@ -19,9 +19,9 @@ class ctrrpc:
     s=None
 
     # Connect to rpc.
-    def __init__(self, ip='65.22.33.112', debug=False):
+    def __init__(self, ip='65.22.33.112', port=8334, debug=False):
         self.s=socket.socket()
-        self.s.connect((ip, 8334))
+        self.s.connect((ip, port))
         self.debug = debug
 
     # Decode response.
