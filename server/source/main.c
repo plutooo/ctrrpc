@@ -18,7 +18,9 @@
 
 #include "gfx.h"
 
+#define PORT 8334
 #define MAX_LINES ((240-8)/8)
+#define __swap16(v) ((((v) & 0xFF) << 8) | ((v) >> 8))
 
 typedef struct
 {
@@ -310,7 +312,7 @@ int main(int argc, char *argv[])
 
             struct sockaddr_in addr;
             addr.sin_family = AF_INET;
-            addr.sin_port = 0x8e20;//0x8e20 = big-endian 8334.
+            addr.sin_port = __swap16(PORT);
             addr.sin_addr.s_addr = INADDR_ANY;
 
             ret = bind(listen_socket, (struct sockaddr *)&addr, sizeof(addr));
