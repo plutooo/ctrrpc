@@ -120,6 +120,26 @@ class ctrrpc:
         else:
             raise Exception('unknown pre-defined handle')
 
+    # malloc/free/linearAlloc/linearFree.
+    def malloc(self, sz):
+        r = self.c(11, (0, sz))
+        fields = self.d(r)
+        return fields[4]
+    def linearalloc(self, sz):
+        r = self.c(11, (1, sz))
+        fields = self.d(r)
+        return fields[4]
+    def free(self, ptr):
+        self.c(11, (2, ptr))
+    def linearfree(self, ptr):
+        self.c(11, (3, ptr))
+
+    # Enable/disable drawing by app (useful when poking GPU).
+    def enable_drawing(self):
+        self.c(12, (1,))
+    def disable_drawing(self):
+        self.c(12, (0,))
+
     def __del__(self):
         self.s.send(struct.pack('<BBBBIIIIIII', 0,0,0,0,0,0,0,0,0,0,0))
         self.s.close()

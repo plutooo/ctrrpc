@@ -29,9 +29,10 @@ def gspgpu_readhwregs(addr):
     ret = r.syncrequest(gsp_handle)['ret']
 
     if ret == 0:
-        print hex(addr), ':', hex(r.r32(cmdbuf-0x80))
+        return r.r32(cmdbuf-0x80)
+    return None
 
 
 # Dump framebuffer registers
 for addr in range(0x1EF00400, 0x1EF00500, 4):
-    gspgpu_readhwregs(addr)
+    print hex(gspgpu_readhwregs(addr)), ':', hex(gspgpu_readhwregs(addr+0x100))

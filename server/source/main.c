@@ -97,6 +97,7 @@ int thread_exit = 0;
 int last_cmd = 0;
 int last_cmd_result = 0;
 int sock;
+int enable_draw = 1;
 
 typedef struct {
     u8 type;
@@ -126,7 +127,7 @@ int execute_cmd(int sock, cmd_t* cmd) {
     }
 
     case 3: { // get tls
-        resp.args[0] = getThreadCommandBuffer();
+        resp.args[0] = (u32) getThreadCommandBuffer();
         break;
     }
 
@@ -195,10 +196,44 @@ int execute_cmd(int sock, cmd_t* cmd) {
         case 0: { // gsp_handle
             extern Handle gspGpuHandle;
             resp.args[0] = gspGpuHandle;
+            break;
+        }
         }
 
+        break;
+    }
+
+    case 11: { // malloc/free
+        char* p = NULL;
+
+        switch(cmd->args[0]) {
+        case 0: { // normal-mem
+            p = malloc(0x100);
+            break;
         }
 
+        case 1: { // linear-mem
+            p = linearAlloc(0x100);
+            break;
+        }
+
+        case 2: { // free normal-mem
+            free((void*)cmd->args[1]);
+            break;
+        }
+
+        case 3: { // free linear-mem
+            linearFree((void*)cmd->args[1]);
+            break;
+        }
+        }
+
+        resp.args[0] = (u32) p;
+        break;
+    }
+
+    case 12: { // enable/disable drawing
+        enable_draw = cmd->args[0];
         break;
     }
 
@@ -255,7 +290,9 @@ void conn_main() {
 
         first = 0;
         it++;
-        renderFrame(); 
+
+        if(enable_draw)
+            renderFrame(); 
 
         u32 keys = hidKeysUp();
         if(keys & KEY_A || exiting)
@@ -364,7 +401,8 @@ int main(int argc, char *argv[])
 
         it++;
         first = 0;
-        renderFrame(); 
+        if(enable_draw)
+            renderFrame(); 
 
         u32 keys = hidKeysUp();
         if(keys & KEY_A)
