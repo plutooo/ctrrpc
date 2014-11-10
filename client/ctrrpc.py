@@ -26,7 +26,7 @@ class ctrrpc:
 
     # Decode response.
     def d(self, x):
-        return struct.unpack('BBBBIIIIIII', x)
+        return struct.unpack('<BBBBIIIIIII', x)
 
     # Send request.
     def c(self, cmd, args):
@@ -35,7 +35,7 @@ class ctrrpc:
             raise Exception('max len(args) == 7')
         while len(args) != 7:
             args.append(0)
-        self.s.send(struct.pack('BBBBIIIIIII', cmd,0,0,0,
+        self.s.send(struct.pack('<BBBBIIIIIII', cmd,0,0,0,
                            args[0],args[1],args[2],args[3],
                            args[4],args[5],args[6]))
         r = self.s.recv(32)
@@ -81,5 +81,5 @@ class ctrrpc:
         return self.d(r)[4]
 
     def __del__(self):
-        self.s.send(struct.pack('BBBBIIIIIII', 0,0,0,0,0,0,0,0,0,0,0))
+        self.s.send(struct.pack('<BBBBIIIIIII', 0,0,0,0,0,0,0,0,0,0,0))
         self.s.close()
