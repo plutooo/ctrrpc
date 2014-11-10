@@ -89,6 +89,14 @@ print(console_t  *console,
 }
 
 int listen_socket;
+u64 thread_stack[0x1000/sizeof(u64)];
+Handle new_cmd_event;
+Handle cmd_done_event;
+Handle thread;
+int thread_exit = 0;
+int last_cmd = 0;
+int last_cmd_result = 0;
+int sock;
 
 typedef struct {
     u8 type;
@@ -96,8 +104,9 @@ typedef struct {
     u32 args[7];
 } cmd_t;
 
+cmd_t resp;
+
 int execute_cmd(int sock, cmd_t* cmd) {
-    cmd_t resp;
     memset(&resp, 0, sizeof(resp));
 
     switch(cmd->type) {
@@ -157,21 +166,56 @@ int execute_cmd(int sock, cmd_t* cmd) {
         break;
     }
 
+    case 7: { // getservicehandle
+        Handle handle = 0;
+        int ret = srvGetServiceHandle(&handle, (const char*) &cmd->args[0]);
+
+        resp.args[0] = ret;
+        resp.args[1] = handle;
+        break;
+    }
+
+    case 8: { // syncrequest
+        int ret = svcSendSyncRequest(cmd->args[0]);
+
+        resp.args[0] = ret;
+        break;
+    }
+
+    case 9: { // closehandle
+        int ret = svcCloseHandle(cmd->args[0]);
+
+        resp.args[0] = ret;
+        break;
+    }
+
+    case 10: { // getctrulibhandle
+        switch(cmd->args[0]) {
+
+        case 0: { // gsp_handle
+            extern Handle gspGpuHandle;
+            resp.args[0] = gspGpuHandle;
+        }
+
+        }
+
+        break;
+    }
+
     default:
         return 0xDEAD; // unknown cmd
     }
 
-    send(sock, &resp, sizeof(resp), 0);
     return 0;
 }
 
-void conn_main(int sock) {
+cmd_t cmd;
+
+void conn_main() {
     APP_STATUS status;
     u32 it = 0;
     int ret = 0;
     int first = 1;
-    int last_cmd = 0;
-    int last_cmd_result = 0;
     int exiting = 0;
 
     while((status = aptGetStatus()) != APP_EXITING)
@@ -184,7 +228,6 @@ void conn_main(int sock) {
         print(&bot, "last_cmd: %02x\n", last_cmd & 0xFF);
 
         if(!first) {
-            cmd_t cmd;
             u32 bytes_read = 0;
 
             while(1) {
@@ -197,8 +240,11 @@ void conn_main(int sock) {
 
                 bytes_read += ret;
                 if(bytes_read == sizeof(cmd)) {
-                    last_cmd = cmd.type;
-                    last_cmd_result = execute_cmd(sock, &cmd);
+                    svcSignalEvent(new_cmd_event);
+                    svcWaitSynchronization(cmd_done_event, U64_MAX);
+                    svcClearEvent(cmd_done_event);
+
+                    send(sock, &resp, sizeof(resp), 0);
 
                     if(last_cmd_result == 0xDEAD)
                         exiting = 1;
@@ -217,6 +263,21 @@ void conn_main(int sock) {
     }
 }
 
+void cmd_thread_func() {
+    while(1) {
+        svcWaitSynchronization(new_cmd_event, U64_MAX);
+        svcClearEvent(new_cmd_event);
+
+        if(thread_exit) svcExitThread();
+
+        last_cmd = cmd.type;
+        last_cmd_result = execute_cmd(sock, &cmd);
+
+        svcSignalEvent(cmd_done_event);
+    }
+}
+
+
 /*----------------*/
 int main(int argc, char *argv[])
 {
@@ -227,6 +288,13 @@ int main(int argc, char *argv[])
     gfxInit();
     hidInit(NULL);
     fsInit();
+
+    svcCreateEvent(&new_cmd_event, 0);
+    svcCreateEvent(&cmd_done_event, 0);
+    svcCreateThread(&thread, cmd_thread_func, 0x0,
+                    (u32*)((char*)thread_stack + sizeof(thread_stack)),
+                    0x31, 0xfffffffe);
+
     int where = 0;
     u32 ret = SOC_Initialize((u32*)0x08000000, 0x48000);
 
@@ -271,6 +339,7 @@ int main(int argc, char *argv[])
         hidScanInput();
         consoleClear(&top);
 
+        print(&top, "newver\n");
         print(&top, "ret: %08x, where: %d\n", ret, where);
         print(&top, "frame: %08x\n", it);
         u32 ip = gethostid();
@@ -279,15 +348,16 @@ int main(int argc, char *argv[])
         if(accept_errno != 0) print(&top, "accept returned errno %d\n", accept_errno);
 
         if(!first) {
-            int sock = accept(listen_socket, NULL, NULL);
-            if(sock == -1) {
+            int s = accept(listen_socket, NULL, NULL);
+            if(s == -1) {
                 int err = SOC_GetErrno();
 
                 if(err != -EWOULDBLOCK)
                     accept_errno = err;
             }
             else {
-                conn_main(sock);
+                sock = s;
+                conn_main();
                 closesocket(sock);
             }
         }
@@ -300,6 +370,14 @@ int main(int argc, char *argv[])
         if(keys & KEY_A)
             break;
     }
+
+    thread_exit = 1;
+    svcSignalEvent(new_cmd_event);
+    svcWaitSynchronization(thread, U64_MAX);
+    svcCloseHandle(thread);
+
+    svcCloseHandle(new_cmd_event);
+    svcCloseHandle(cmd_done_event);
 
     SOC_Shutdown();
     fsExit();

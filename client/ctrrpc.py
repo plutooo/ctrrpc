@@ -19,7 +19,7 @@ class ctrrpc:
     s=None
 
     # Connect to rpc.
-    def __init__(self, ip='192.168.0.105', debug=False):
+    def __init__(self, ip='65.22.33.112', debug=False):
         self.s=socket.socket()
         self.s.connect((ip, 8334))
         self.debug = debug
@@ -79,6 +79,46 @@ class ctrrpc:
     def gettls(self):
         r = self.c(3, ())
         return self.d(r)[4]
+
+    # Get service handle.
+    def getservicehandle(self, name):
+        if len(name) > 8:
+            raise Exception('too long service name')
+        name = name.encode('hex')
+        while len(name) != 16:
+            name = name + '00'
+        namelo = int(name[0:8], 16)
+        namehi = int(name[8:16], 16)
+
+        namelo = struct.unpack('>I', struct.pack('<I', namelo))[0]
+        namehi = struct.unpack('>I', struct.pack('<I', namehi))[0]
+
+        r = self.c(7, (namelo, namehi))
+        fields = self.d(r)
+        return { 'ret': fields[4], 'handle': fields[5] }
+
+    # svcSendSyncRequest.
+    def syncrequest(self, handle):
+        r = self.c(8, (handle,))
+        fields = self.d(r)
+
+        return { 'ret': fields[4] }
+
+    # svcCloseHandle.
+    def closehandle(self, handle):
+        r = self.c(9, (handle,))
+        fields = self.d(r)
+
+        return { 'ret': fields[4] }
+
+    # Get internal ctrulib handle.
+    def gethandle(self, name):
+        if name == 'gsp':
+            r = self.c(10, (0,))
+            fields = self.d(r)
+            return fields[4]
+        else:
+            raise Exception('unknown pre-defined handle')
 
     def __del__(self):
         self.s.send(struct.pack('<BBBBIIIIIII', 0,0,0,0,0,0,0,0,0,0,0))
